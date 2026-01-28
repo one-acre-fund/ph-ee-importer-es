@@ -105,12 +105,12 @@ public class ElasticsearchClient {
         client.close();
     }
 
-    public void bulk(IndexRequest indexRequest) {
+    public synchronized void bulk(IndexRequest indexRequest) {
         logger.info("Calling bulk request for insert");
         bulkRequest.add(indexRequest);
     }
 
-    public void bulk(UpdateRequest updateRequest) {
+    public synchronized void bulk(UpdateRequest updateRequest) {
         logger.info("Calling bulk request for upsert");
         bulkRequest.add(updateRequest);
     }
@@ -164,26 +164,27 @@ public class ElasticsearchClient {
         boolean success;
         int bulkSize = bulkRequest.numberOfActions();
         if (bulkSize > 0) {
+            // Create a copy to avoid concurrent modification during ES client processing
+            BulkRequest requestToFlush = bulkRequest;
+            bulkRequest = new BulkRequest();
+
             try {
                 metrics.recordBulkSize(bulkSize);
-                BulkResponse responses = exportBulk();
+                BulkResponse responses = client.bulk(requestToFlush, RequestOptions.DEFAULT);
                 success = checkBulkResponses(responses);
             } catch (IOException e) {
+                // Restore the request if flush failed
+                bulkRequest = requestToFlush;
                 throw new ElasticsearchExporterException("Failed to flush bulk", e);
             }
 
-            if (success) { // all records where flushed, create new bulk request, otherwise retry next time
-                bulkRequest = new BulkRequest();
+            if (!success) {
+                // Restore the request if it wasn't successful
+                bulkRequest = requestToFlush;
             }
         }
 
         return bulkSize;
-    }
-
-    private BulkResponse exportBulk() throws IOException {
-        try (Histogram.Timer timer = metrics.measureFlushDuration()) {
-            return client.bulk(bulkRequest, RequestOptions.DEFAULT);
-        }
     }
 
     private boolean checkBulkResponses(BulkResponse responses) {
@@ -197,7 +198,7 @@ public class ElasticsearchClient {
         return true;
     }
 
-    public boolean shouldFlush() {
+    public synchronized boolean shouldFlush() {
         return bulkRequest.numberOfActions() >= bulkSize;
     }
 

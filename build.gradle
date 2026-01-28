@@ -163,7 +163,7 @@ configure(this) {
 }
 
 group = 'org.mifos'
-version = '1.0.0-SNAPSHOT'
+version = '1.0.0'
 sourceCompatibility = '17'
 
 publishing {
@@ -176,4 +176,9 @@ publishing {
 
 tasks.withType(JavaCompile) {
     options.encoding = 'UTF-8'
+}
+tasks.register('printVersion') {
+    doLast {
+        println project.version
+    }
 }

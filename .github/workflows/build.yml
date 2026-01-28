@@ -1,0 +1,69 @@
+name: build.yml
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - "release/*"
+
+  pull_request:
+    branches:
+      - main
+      - develop
+      - "release/*"
+
+env:
+  SHOULD_PUBLISH: ${{ github.ref  == 'refs/heads/master' || github.ref  == 'refs/heads/main' ||  github.ref == 'refs/heads/develop' || startsWith(github.ref , 'refs/heads/release') }}
+  IS_RELEASE: ${{ github.ref  == 'refs/heads/master' || github.ref  == 'refs/heads/main' || startsWith(github.ref , 'refs/heads/release') }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Java Version
+        uses: actions/setup-java@v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+
+      - name: Get Revision
+        run: echo "REVISION=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Generate image tags
+        run: |
+          VERSION_TAG=$(./gradlew -q printVersion)
+          IMAGE_TAGS="${VERSION_TAG}.$(date '+%Y.%m.%d').${REVISION}"
+          if [ $IS_RELEASE == 'true' ]; then IMAGE_TAGS="$VERSION_TAG"; fi
+          echo "IMAGE_TAGS=$IMAGE_TAGS" >> $GITHUB_ENV
+
+      - name: Gradlew build
+        run: |
+          ./gradlew bootJar --info --build-cache 
+
+      - name: Gradlew test
+        run: |
+          ./gradlew test --info --build-cache
+
+      - name: Login to Azure registry
+        uses: docker/login-action@v3
+        if: ${{ env.SHOULD_PUBLISH == 'true'}}
+        with:
+          registry: oaftech.azurecr.io
+          username: ${{ vars.ACR_PULL_USERNAME }}
+          password: ${{ secrets.ACR_PULL_PASSWORD }}
+
+      - name: Build image
+        run: docker build . -t oaftech.azurecr.io/oneacrefund/ph-ee-importer-es:${{ env.IMAGE_TAGS }}
+
+      - name: Push image to registry
+        if: ${{ env.SHOULD_PUBLISH == 'true'}}
+        run: |
+          docker push oaftech.azurecr.io/oneacrefund/ph-ee-importer-es:${{ env.IMAGE_TAGS }}
