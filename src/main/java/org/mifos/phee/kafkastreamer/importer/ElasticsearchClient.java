@@ -1,6 +1,5 @@
 package org.mifos.phee.kafkastreamer.importer;
 
-import io.prometheus.client.Histogram;
 import io.zeebe.exporter.ElasticsearchExporterException;
 import io.zeebe.exporter.ElasticsearchMetrics;
 import io.zeebe.util.VersionUtil;
