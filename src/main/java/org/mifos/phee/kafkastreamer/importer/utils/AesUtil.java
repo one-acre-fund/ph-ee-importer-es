@@ -61,7 +61,8 @@ public class AesUtil {
         return Base64.decodeBase64(base64EncodedString);
     }
 
-    public static SecretKey deriveKey(String key, byte[] salt, int iterationCount, int keyLength) throws NoSuchAlgorithmException, InvalidKeySpecException {
+    public static SecretKey deriveKey(String key, byte[] salt, int iterationCount, int keyLength)
+            throws NoSuchAlgorithmException, InvalidKeySpecException {
         SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
         KeySpec spec = new PBEKeySpec(key.toCharArray(), salt, iterationCount, keyLength);
         SecretKey tmp = factory.generateSecret(spec);
@@ -85,6 +86,7 @@ public class AesUtil {
         SecretKey key = keyGenerator.generateKey();
         return base64Encode(key.getEncoded());
     }
+
     public static boolean checkForMaskingFields(JSONObject jsonObject, List<String> fieldsRequiredMasking) {
         for (String field : fieldsRequiredMasking) {
             if (!jsonObject.has(field)) {

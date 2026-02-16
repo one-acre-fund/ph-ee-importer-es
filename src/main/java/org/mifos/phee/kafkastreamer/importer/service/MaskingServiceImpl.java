@@ -4,7 +4,6 @@ import static org.apache.commons.text.StringEscapeUtils.unescapeJava;
 
 import java.util.ArrayList;
 import java.util.List;
-
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.mifos.phee.kafkastreamer.importer.KafkaVariables;
@@ -44,10 +43,10 @@ public class MaskingServiceImpl implements MaskingService {
             String valueStringifiedJsonString = value.getString(KafkaVariables.VALUE);
             JSONObject channelRequest = getJsonObjectFromStringifiedJson(valueStringifiedJsonString);
 
-            List<String>fieldsRequiredMasking=new ArrayList<>();
+            List<String> fieldsRequiredMasking = new ArrayList<>();
             fieldsRequiredMasking.add(KafkaVariables.PAYER);
             fieldsRequiredMasking.add(KafkaVariables.PAYEE);
-            if(AesUtil.checkForMaskingFields(channelRequest,fieldsRequiredMasking)){
+            if (AesUtil.checkForMaskingFields(channelRequest, fieldsRequiredMasking)) {
                 return rawData;
             }
             String payerPartyIdentifier = "", payeePartyIdentifier = "";
@@ -93,11 +92,11 @@ public class MaskingServiceImpl implements MaskingService {
             String valueStringifiedJsonString = value.getString(KafkaVariables.VALUE);
             JSONObject channelGsmaRequest = getJsonObjectFromStringifiedJson(valueStringifiedJsonString);
 
-            List<String>fieldsRequiredMasking=new ArrayList<>();
+            List<String> fieldsRequiredMasking = new ArrayList<>();
             fieldsRequiredMasking.add(KafkaVariables.DEBIT_PARTY);
             fieldsRequiredMasking.add(KafkaVariables.CREDIT_PARTY);
 
-            if(AesUtil.checkForMaskingFields(channelGsmaRequest,fieldsRequiredMasking)){
+            if (AesUtil.checkForMaskingFields(channelGsmaRequest, fieldsRequiredMasking)) {
                 return rawData;
             }
 

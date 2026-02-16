@@ -46,7 +46,7 @@ jobs:
 
       - name: Gradlew build
         run: |
-          ./gradlew bootJar --info --build-cache 
+          ./gradlew bootJar --info --build-cache
 
       - name: Gradlew test
         run: |
