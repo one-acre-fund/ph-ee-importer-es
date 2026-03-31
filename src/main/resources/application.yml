@@ -10,7 +10,7 @@ importer:
     topic: "zeebe-export"
   elasticsearch:
     url: "https://ph-ee-elasticsearch:9200/"
-    bulk-size: 20
+    bulk-size: 100
     index-prefix: "zeebe-record"
 
 elasticsearch:

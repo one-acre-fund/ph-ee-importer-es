@@ -135,12 +135,18 @@ public class ElasticsearchClient {
             if (valueObj.has("name")) { // Checking for variable events
                 if (paymentsIndexConfiguration.getVariables().contains(valueObj.getString("name"))) {
                     if (valueObj.getString("name").equalsIgnoreCase("amount")) {
-                        newRecord.put((String) valueObj.get("name"), Double.parseDouble(valueObj.getString("value").replaceAll("\"", "")));
+                        String rawAmount = valueObj.getString("value").replace("\"", "").trim();
+                        try {
+                            newRecord.put((String) valueObj.get("name"), Double.parseDouble(rawAmount));
+                        } catch (NumberFormatException e) {
+                            logger.warn("Skipping non-numeric amount value for processInstanceKey={}: '{}'",
+                                    valueObj.opt("processInstanceKey"), rawAmount);
+                        }
                     } else if (valueObj.getString("name").equalsIgnoreCase("originDate")) {
                         Instant timestamp = Instant.ofEpochMilli(valueObj.getLong("value"));
                         newRecord.put((String) valueObj.get("name"), timestamp);
                     } else {
-                        newRecord.put((String) valueObj.get("name"), valueObj.get("value").toString().replaceAll("\"", ""));
+                        newRecord.put((String) valueObj.get("name"), valueObj.get("value").toString().replace("\"", ""));
                     }
                 }
                 if (!newRecord.has("processInstanceKey")) {
@@ -352,7 +358,7 @@ public class ElasticsearchClient {
         if (extendedValueType.name().equalsIgnoreCase("process_instance")) {
             extendedValueType = ExtendedValueType.WORKFLOW_INSTANCE;
         }
-        return extendedValueType.name().toLowerCase().replaceAll("_", "-");
+        return extendedValueType.name().toLowerCase().replace("_", "-");
     }
 
     private static String indexTemplateForValueType(ExtendedValueType valueType) {
