@@ -1,0 +1,40 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ph-ee-importer-es
+  title: PH Importer Elasticsearch
+  description: Imports PaymentHub workflow and transaction events into Elasticsearch for search and operations dashboards
+  annotations:
+    github.com/project-slug: one-acre-fund/ph-ee-importer-es
+    backstage.io/kubernetes-id: ph-ee-importer-es
+    sonarqube.org/project-key: one-acre-fund_ph-ee-importer-es
+    backstage.io/code-coverage: sonarqube
+  tags:
+    - java
+    - spring-boot
+    - importer
+    - elasticsearch
+    - kafka
+    - payment-hub
+    - paymenthub
+  links:
+    - url: https://ph-web.oneacrefund.org
+      title: Production Environment
+      icon: globe
+    - url: https://elastic.oneacrefund.org/app/apm/services/ph-ee-connector-importer-es
+      title: Elastic APM Dashboard
+      icon: globe
+    - url: https://elastic.oneacrefund.org/app/r/s/CgjiD
+      title: Kong Ingress logs
+      icon: globe
+    - url: https://github.com/one-acre-fund/ph-ee-importer-es/blob/main/.github/workflows/build.yml
+      title: Build Pipeline
+      icon: build
+spec:
+  type: service
+  lifecycle: production
+  owner: group:one-acre-fund/credits-and-payments
+  system: operations
+  dependsOn:
+    - resource:default/kafka-cluster
+    - resource:default/zeebe-cluster
