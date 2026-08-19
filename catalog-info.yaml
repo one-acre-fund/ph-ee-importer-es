@@ -37,4 +37,4 @@ spec:
   system: operations
   dependsOn:
     - resource:default/kafka-cluster
-    - resource:default/zeebe-cluster
+    - resource:default/ph-elk-cluster
