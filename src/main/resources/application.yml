@@ -3,6 +3,12 @@ kafka:
   # One fixed group per importer so replicas share the topic partitions.
   consumer-group: "ph-ee-importer-es"
   concurrency: 3
+  # Where a group without committed offsets starts: earliest replays the retained backlog
+  # (idempotent, document ids come from the record), latest would skip it.
+  auto-offset-reset: "earliest"
+  poll-timeout-ms: 3000
+  # Pause between retries of a batch whose bulk request failed; retries are unlimited.
+  retry-backoff-ms: 1000
 
 importer:
   masking:

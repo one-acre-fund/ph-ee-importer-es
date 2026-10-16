@@ -38,6 +38,7 @@ import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestClient;
 import org.elasticsearch.client.RestClientBuilder;
 import org.elasticsearch.client.RestHighLevelClient;
+import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.common.xcontent.XContentHelper;
 import org.elasticsearch.xcontent.XContentType;
 import org.json.JSONObject;
@@ -87,7 +88,6 @@ public class ElasticsearchClient {
     private ElasticsearchMetrics metrics;
 
     private DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd").withZone(ZoneOffset.UTC);
-    private BulkRequest bulkRequest = new BulkRequest();
 
     @PostConstruct
     public void setup() {
@@ -98,31 +98,30 @@ public class ElasticsearchClient {
         client.close();
     }
 
-    public synchronized void bulk(IndexRequest indexRequest) {
-        logger.info("Calling bulk request for insert");
-        bulkRequest.add(indexRequest);
+    /**
+     * The actions of one listener batch. Each batch owns its request, so nothing is shared between
+     * listener threads and a failed batch is rebuilt from the re-polled records instead of being
+     * kept here and appended to again.
+     */
+    public BulkRequest newBulk() {
+        return new BulkRequest();
     }
 
-    public synchronized void bulk(UpdateRequest updateRequest) {
-        logger.info("Calling bulk request for upsert");
-        bulkRequest.add(updateRequest);
-    }
-
-    public void index(JSONObject record) {
+    public void index(JSONObject record, BulkRequest bulk) {
         if (metrics == null) {
             metrics = new ElasticsearchMetrics(record.getInt("partitionId"));
         }
-        logger.info("Getting index method called with record value type " + record.getString("valueType"));
+        logger.debug("Getting index method called with record value type {}", record.getString("valueType"));
         if (reportingEnabled) {
-            upsertToReportingIndex(record);
+            upsertToReportingIndex(record, bulk);
         }
-        logger.info("Pushing index for " + indexFor(record));
+        logger.debug("Pushing index for {}", indexFor(record));
         IndexRequest request = new IndexRequest(indexFor(record), typeFor(record), idFor(record))
                 .source(record.toString(), XContentType.JSON).routing(Integer.toString(record.getInt("partitionId")));
-        bulk(request);
+        bulk.add(request);
     }
 
-    public void upsertToReportingIndex(JSONObject record) {
+    public void upsertToReportingIndex(JSONObject record, BulkRequest bulk) {
         JSONObject newRecord = new JSONObject();
         if (record.getString("valueType").equalsIgnoreCase("variable")) {
             JSONObject valueObj = record.getJSONObject("value");
@@ -149,55 +148,61 @@ public class ElasticsearchClient {
                     newRecord.put("timestamp", timestamp);
                 }
             }
-            logger.info("New Record before insert is: " + newRecord);
+            logger.debug("New Record before insert is: {}", newRecord);
             String version = VersionUtil.getVersionLowerCase();
             Instant timestamp = Instant.ofEpochMilli(record.getLong("timestamp"));
             String name = "zeebe-payments" + INDEX_DELIMITER + version + INDEX_DELIMITER + formatter.format(timestamp);
             UpdateRequest request1 = new UpdateRequest(name, valueObj.get("processInstanceKey").toString()).doc(newRecord.toMap())
                     .upsert(newRecord.toString(), XContentType.JSON);
-            bulk(request1);
+            bulk.add(request1);
         }
     }
 
     /**
-     * @return true if every pending action reached Elasticsearch (or nothing was pending)
+     * Sends one batch. A transport failure or an item Elasticsearch may accept later (back
+     * pressure, index block, version conflict, server error) is thrown, so the caller re-polls
+     * the batch; nothing is retained here, so a retry cannot grow the request or leak into
+     * another thread's batch. An item rejected for good (400, the document itself is invalid for
+     * the mapping, or 413) is logged with its index and id and dropped: retrying it would block
+     * the partition forever.
+     *
+     * @return the number of actions Elasticsearch accepted
+     * @throws ElasticsearchExporterException when the batch has to be retried
      */
-    public synchronized boolean flush() {
-        boolean success = true;
-        int bulkSize = bulkRequest.numberOfActions();
-        if (bulkSize > 0) {
-            // Create a copy to avoid concurrent modification during ES client processing
-            BulkRequest requestToFlush = bulkRequest;
-            bulkRequest = new BulkRequest();
-
-            try {
-                metrics.recordBulkSize(bulkSize);
-                BulkResponse responses = client.bulk(requestToFlush, RequestOptions.DEFAULT);
-                success = checkBulkResponses(responses);
-            } catch (IOException e) {
-                // Restore the request if flush failed
-                bulkRequest = requestToFlush;
-                throw new ElasticsearchExporterException("Failed to flush bulk", e);
+    public int flush(BulkRequest bulk) {
+        int actions = bulk.numberOfActions();
+        if (actions == 0) {
+            return 0;
+        }
+        if (metrics != null) {
+            metrics.recordBulkSize(actions);
+        }
+        BulkResponse responses;
+        try {
+            responses = client.bulk(bulk, RequestOptions.DEFAULT);
+        } catch (IOException e) {
+            throw new ElasticsearchExporterException("Failed to flush bulk of " + actions + " actions", e);
+        }
+        int rejected = 0;
+        for (BulkItemResponse response : responses) {
+            if (!response.isFailed()) {
+                continue;
             }
-
-            if (!success) {
-                // Restore the request if it wasn't successful
-                bulkRequest = requestToFlush;
+            BulkItemResponse.Failure failure = response.getFailure();
+            if (isPermanentRejection(failure.getStatus())) {
+                rejected++;
+                logger.error("Elasticsearch rejected document {}/{} with {}, dropping it: {}",
+                        response.getIndex(), response.getId(), failure.getStatus(), response.getFailureMessage());
+            } else {
+                throw new ElasticsearchExporterException("Elasticsearch did not accept document " + response.getIndex()
+                        + "/" + response.getId() + " (" + failure.getStatus() + "), batch will be retried: " + response.getFailureMessage());
             }
         }
-
-        return success;
+        return actions - rejected;
     }
 
-    private boolean checkBulkResponses(BulkResponse responses) {
-        for (BulkItemResponse response : responses) {
-            if (response.isFailed()) {
-                logger.warn("Failed to flush at least one bulk request {}", response.getFailureMessage());
-                return false;
-            }
-        }
-
-        return true;
+    static boolean isPermanentRejection(RestStatus status) {
+        return status == RestStatus.BAD_REQUEST || status == RestStatus.REQUEST_ENTITY_TOO_LARGE;
     }
 
     /**
