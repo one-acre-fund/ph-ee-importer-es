@@ -45,8 +45,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.TaskScheduler;
-import org.springframework.scheduling.support.PeriodicTrigger;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -83,9 +81,6 @@ public class ElasticsearchClient {
     private String password;
 
     @Autowired
-    private TaskScheduler taskScheduler;
-
-    @Autowired
     private PaymentsIndexConfiguration paymentsIndexConfiguration;
 
     private RestHighLevelClient client;
@@ -97,7 +92,6 @@ public class ElasticsearchClient {
     @PostConstruct
     public void setup() {
         this.client = createClient();
-        taskScheduler.schedule(this::flush, new PeriodicTrigger(2000));
     }
 
     public void close() throws IOException {
@@ -165,8 +159,11 @@ public class ElasticsearchClient {
         }
     }
 
-    public synchronized int flush() {
-        boolean success;
+    /**
+     * @return true if every pending action reached Elasticsearch (or nothing was pending)
+     */
+    public synchronized boolean flush() {
+        boolean success = true;
         int bulkSize = bulkRequest.numberOfActions();
         if (bulkSize > 0) {
             // Create a copy to avoid concurrent modification during ES client processing
@@ -189,7 +186,7 @@ public class ElasticsearchClient {
             }
         }
 
-        return bulkSize;
+        return success;
     }
 
     private boolean checkBulkResponses(BulkResponse responses) {
@@ -201,10 +198,6 @@ public class ElasticsearchClient {
         }
 
         return true;
-    }
-
-    public synchronized boolean shouldFlush() {
-        return bulkRequest.numberOfActions() >= bulkSize;
     }
 
     /**

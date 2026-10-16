@@ -1,5 +1,8 @@
 kafka:
   brokers: "kafka:9092"
+  # One fixed group per importer so replicas share the topic partitions.
+  consumer-group: "ph-ee-importer-es"
+  concurrency: 3
 
 importer:
   masking:
