@@ -163,8 +163,12 @@ configure(this) {
 }
 
 group = 'org.mifos'
-version = '1.0.2'
+version = '1.1.0'
 sourceCompatibility = '17'
+
+test {
+    useJUnitPlatform()
+}
 
 publishing {
     publications {
