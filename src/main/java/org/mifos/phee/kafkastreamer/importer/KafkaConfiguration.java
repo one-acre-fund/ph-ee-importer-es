@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.support.DefaultLifecycleProcessor;
 import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.config.KafkaListenerContainerFactory;
@@ -48,12 +49,17 @@ public class KafkaConfiguration {
     @Value("${kafka.auto-offset-reset:earliest}")
     private String autoOffsetReset;
 
+    @Value("${kafka.shutdown-timeout-ms:30000}")
+    private long shutdownTimeoutMs;
+
     @Bean
     KafkaListenerContainerFactory<ConcurrentMessageListenerContainer<String, String>> kafkaListenerContainerFactory() {
         ConcurrentKafkaListenerContainerFactory<String, String> factory = new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory());
         factory.setConcurrency(concurrency);
         factory.getContainerProperties().setPollTimeout(pollTimeoutMs);
+        // Bounds a direct container stop(); the context-close path is bounded by lifecycleProcessor().
+        factory.getContainerProperties().setShutdownTimeout(shutdownTimeoutMs);
         // One poll is one Elasticsearch bulk: the listener flushes before the batch is committed.
         factory.setBatchListener(true);
         // A batch whose bulk did not reach Elasticsearch is re-polled instead of committed past.
@@ -63,6 +69,21 @@ public class KafkaConfiguration {
         factory.setCommonErrorHandler(new DefaultErrorHandler(new FixedBackOff(retryBackoffMs, FixedBackOff.UNLIMITED_ATTEMPTS)));
 
         return factory;
+    }
+
+    /**
+     * On SIGTERM Spring stops the listener containers first and waits for their consumer threads to
+     * flush the bulk of the current poll, commit the offsets and leave the group. The wait is the
+     * lifecycle processor's timeout per shutdown phase (30 s by default), after which the
+     * Elasticsearch client is closed under the still running batch and the JVM exits. Both this and
+     * the container shutdown timeout follow kafka.shutdown-timeout-ms, which must stay below the pod's
+     * terminationGracePeriodSeconds. Replaces the Spring Boot auto-configured processor.
+     */
+    @Bean(name = "lifecycleProcessor")
+    public DefaultLifecycleProcessor lifecycleProcessor() {
+        DefaultLifecycleProcessor processor = new DefaultLifecycleProcessor();
+        processor.setTimeoutPerShutdownPhase(shutdownTimeoutMs);
+        return processor;
     }
 
     @Bean

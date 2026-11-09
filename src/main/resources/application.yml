@@ -9,6 +9,9 @@ kafka:
   poll-timeout-ms: 3000
   # Pause between retries of a batch whose bulk request failed; retries are unlimited.
   retry-backoff-ms: 1000
+  # How long the consumer threads may flush and commit the current poll after SIGTERM before the
+  # Elasticsearch client is closed and the JVM exits. Must stay below terminationGracePeriodSeconds.
+  shutdown-timeout-ms: 30000
 
 importer:
   masking:
