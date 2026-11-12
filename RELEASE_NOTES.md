@@ -1,5 +1,9 @@
 Release Notes
 
+## Version 1.1.1 - Up to date with Mifos Version 1.0.0
+    * Payment Hub Importer-es
+        * [FD-1939] - Let the Kafka consumers flush and commit their bulk on shutdown
+
 ## Version 1.1.0 - Up to date with Mifos Version 1.0.0
     * Payment Hub Importer-es
         *  Horizontal scaling
