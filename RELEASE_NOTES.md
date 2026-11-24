@@ -1,5 +1,9 @@
 Release Notes
 
+## Version 1.1.2 - Up to date with Mifos Version 1.0.0
+    * Payment Hub Importer-es
+        * [FD-1982] - Records of a type without an index (PROCESS_EVENT) are left out without an ERROR log
+
 ## Version 1.1.1 - Up to date with Mifos Version 1.0.0
     * Payment Hub Importer-es
         * [FD-1939] - Let the Kafka consumers flush and commit their bulk on shutdown

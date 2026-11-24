@@ -1,6 +1,9 @@
 package org.mifos.phee.kafkastreamer.importer;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.json.JSONObject;
 import org.mifos.phee.kafkastreamer.importer.service.MaskingService;
@@ -13,6 +16,9 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class KafkaImporter {
+
+    private static final Set<String> KNOWN_VALUE_TYPES = Arrays.stream(ExtendedValueType.values()).map(Enum::name)
+            .collect(Collectors.toSet());
 
     private Logger logger = LoggerFactory.getLogger(this.getClass());
 
@@ -33,6 +39,7 @@ public class KafkaImporter {
         // scratch; document ids are derived from the Zeebe record, so a replay overwrites.
         BulkRequest bulk = elasticsearchClient.newBulk();
         int skipped = 0;
+        int unsupported = 0;
         for (String rawData : records) {
             String payload = rawData;
             try {
@@ -40,6 +47,14 @@ public class KafkaImporter {
                     payload = maskingService.mask(rawData);
                 }
                 JSONObject data = new JSONObject(payload);
+                String valueType = data.optString("valueType");
+                if (!valueType.isEmpty() && !KNOWN_VALUE_TYPES.contains(valueType)) {
+                    // Zeebe exports record types this importer has no index for (PROCESS_EVENT on
+                    // 8.2). They were never indexed; leaving them out is routine, not an error.
+                    unsupported++;
+                    logger.debug("ignoring record of unsupported type: {}", describe(payload));
+                    continue;
+                }
                 elasticsearchClient.index(data, bulk);
             } catch (Exception e) {
                 // A record that cannot be masked or parsed would fail on every retry; skip it so
@@ -51,7 +66,8 @@ public class KafkaImporter {
             }
         }
         int accepted = elasticsearchClient.flush(bulk);
-        logger.info("flushed {} actions to ES for {} records, {} skipped", accepted, records.size(), skipped);
+        logger.info("flushed {} actions to ES for {} records, {} skipped, {} of unsupported type", accepted, records.size(), skipped,
+                unsupported);
     }
 
     static String describe(String payload) {

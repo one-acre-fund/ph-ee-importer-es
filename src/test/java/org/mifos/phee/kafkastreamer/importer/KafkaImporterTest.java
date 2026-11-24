@@ -69,6 +69,15 @@ class KafkaImporterTest {
     }
 
     @Test
+    void recordOfATypeWithoutAnIndexIsLeftOutAndTheRestOfTheBatchIsStillFlushed() {
+        kafkaImporter.listen(List.of("{\"valueType\":\"PROCESS_EVENT\",\"partitionId\":1,\"position\":1}",
+                "{\"valueType\":\"VARIABLE\",\"partitionId\":1,\"position\":2}"));
+
+        verify(elasticsearchClient, times(1)).index(any(JSONObject.class), same(bulk));
+        verify(elasticsearchClient).flush(same(bulk));
+    }
+
+    @Test
     void describeLogsOnlyMetadataNeverThePayload() {
         String payload = "{\"valueType\":\"VARIABLE\",\"partitionId\":1,\"position\":7,\"key\":9,"
                 + "\"value\":{\"name\":\"partyId\",\"value\":\"+250788000000\"}}";
